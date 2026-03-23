@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Jika Maka - Block Blast + Voice Chat</title>
+    <title>Jika Maka - Block Blast Style (Offline Ready)</title>
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
@@ -30,7 +30,7 @@
         .header-title { 
             font-size: 2.5rem; font-weight: 900; letter-spacing: 2px;
             color: white; text-shadow: 0 6px 0 var(--purple-shadow);
-            margin-bottom: 5px; text-transform: uppercase;
+            margin-bottom: 10px; text-transform: uppercase;
         }
 
         .screen { display: none; flex-direction: column; gap: 15px; align-items: center; animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); width: 100%; }
@@ -105,15 +105,8 @@
 </head>
 <body>
 
-<div id="audio-container" style="display:none;"></div>
-
 <div class="main-wrapper">
     <div class="header-title">JIKA MAKA</div>
-
-    <div id="voice-controls" style="display:none; width: 100%; flex-direction: row; gap: 10px; justify-content: center; margin-bottom: 5px;">
-        <button id="btn-mic" class="btn-blue" style="padding: 10px; font-size: 0.9rem;" onclick="playClick(); toggleMic()">MIC: ON</button>
-        <button id="btn-speaker" class="btn-blue" style="padding: 10px; font-size: 0.9rem;" onclick="playClick(); toggleSpeaker()">SND: ON</button>
-    </div>
 
     <div class="screen active" id="sc-home">
         <p class="sub-text">Bikin kalimat konyol bareng temen!</p>
@@ -288,7 +281,7 @@
 </div>
 
 <script>
-    // --- SOUND ENGINE & VOICE CHAT ---
+    // --- SOUND ENGINE ---
     const clickSound = new Audio("https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3");
     function playClick() { clickSound.currentTime = 0; clickSound.play().catch(e=>console.log(e)); }
 
@@ -303,87 +296,14 @@
         osc.stop(audioCtx.currentTime + 0.1);
     }
 
-    let localStream = null;
-    let activeCalls = {};
-
-    async function initVoice() {
-        if(mode === 'offline') return;
-        try {
-            localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-            els('voice-controls').style.display = 'flex';
-
-            // Terima telpon masuk
-            peer.on('call', (call) => {
-                call.answer(localStream);
-                call.on('stream', (remoteStream) => { playRemoteStream(call.peer, remoteStream); });
-                call.on('close', () => { removeRemoteStream(call.peer); });
-            });
-        } catch(e) {
-            console.warn("Gagal akses MIC atau ditolak user:", e);
-            alert("Mic nggak diizinin. Lu tetep bisa main tapi ga bisa voice chat cuy.");
-        }
-    }
-
-    function callAllPeers() {
-        if(!localStream || !peer || mode === 'offline') return;
-        players.forEach(p => {
-            if(p.id !== myId && !activeCalls[p.id]) {
-                let call = peer.call(p.id, localStream);
-                if(call) {
-                    activeCalls[p.id] = call;
-                    call.on('stream', (remoteStream) => { playRemoteStream(p.id, remoteStream); });
-                    call.on('close', () => { removeRemoteStream(p.id); });
-                }
-            }
-        });
-    }
-
-    function playRemoteStream(peerId, stream) {
-        if(els('audio-' + peerId)) return; 
-        let aud = document.createElement('audio');
-        aud.id = 'audio-' + peerId;
-        aud.autoplay = true;
-        aud.srcObject = stream;
-        els('audio-container').appendChild(aud);
-    }
-
-    function removeRemoteStream(peerId) {
-        let aud = els('audio-' + peerId);
-        if(aud) aud.remove();
-        delete activeCalls[peerId];
-    }
-
-    function toggleMic() {
-        if(!localStream) return;
-        let track = localStream.getAudioTracks()[0];
-        if(track) {
-            track.enabled = !track.enabled;
-            els('btn-mic').innerText = track.enabled ? "MIC: ON" : "MIC: OFF";
-            els('btn-mic').className = track.enabled ? "btn-blue" : "btn-red";
-        }
-    }
-
-    function toggleSpeaker() {
-        let container = els('audio-container');
-        let isMuted = container.style.opacity === '0'; // Hacky way to store state
-        container.style.opacity = isMuted ? '1' : '0';
-        
-        let audios = container.querySelectorAll('audio');
-        audios.forEach(a => a.muted = !isMuted);
-
-        els('btn-speaker').innerText = isMuted ? "SND: ON" : "SND: OFF";
-        els('btn-speaker').className = isMuted ? "btn-blue" : "btn-red";
-    }
-
-
     // --- LOGIC GAME ---
     const config = { config: { 'iceServers': [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }] } };
-    let myName = "", isHost = false, myId = ""; 
-    let conn = null, guests = []; 
+    let myName = "", mode = "", isHost = false, myId = ""; 
+    let peer = null, conn = null, guests = [], players = []; 
     let state = { maxRounds: 3, currentRound: 1, duration: 10, timeLeft: 10, timer: null, judgeIdx: 0, currentJudgeId: "", jikaText: "", submissions: [] };
     
     // OFFLINE STATE
-    let offP1 = "", offP2 = "", offCurrentP = 1, offPhase = 1;
+    let offP1 = "", offP2 = "", offCurrentP = 1, offPhase = 1; // phase 1 = JIKA, phase 2 = MAKA
 
     const els = (id) => document.getElementById(id);
     function nav(id) { document.querySelectorAll('.screen').forEach(s => s.classList.remove('active')); els('sc-'+id).classList.add('active'); }
@@ -409,6 +329,7 @@
     els('in-custom-time').addEventListener('input', sync);
     els('in-custom-round').addEventListener('input', sync);
 
+
     // ==========================================
     // 🔴 OFFLINE MODE LOGIC
     // ==========================================
@@ -419,7 +340,9 @@
         state.duration = parseInt(els('off-set-time').value);
         state.currentRound = 1;
         
-        offCurrentP = 1; offPhase = 1;
+        // Mulai ronde 1: P1 yang bikin JIKA
+        offCurrentP = 1; 
+        offPhase = 1;
         showPassPhoneScreen();
     }
 
@@ -431,39 +354,43 @@
     }
 
     function startOfflineTurn() {
-        nav('game'); clearInterval(state.timer);
+        nav('game');
+        clearInterval(state.timer);
         els('round-info').innerText = `BABAK ${state.currentRound} / ${state.maxRounds}`;
         els('in-game').value = ""; els('in-game').style.display = 'block'; els('btn-submit').style.display = 'flex'; els('btn-surrender').style.display = 'flex';
         els('wait-msg').style.display = 'none';
         
         let currentPlayerName = (offCurrentP === 1) ? offP1 : offP2;
+
         if(offPhase === 1) {
+            // Fase Ngetik JIKA
             els('game-title').innerText = currentPlayerName.toUpperCase() + " (JIKA)";
             els('jika-context').style.display = 'none';
         } else {
+            // Fase Ngetik MAKA
             els('game-title').innerText = currentPlayerName.toUpperCase() + " (MAKA)";
-            els('jika-context').style.display = 'flex'; els('jika-context-text').innerText = state.jikaText;
+            els('jika-context').style.display = 'flex';
+            els('jika-context-text').innerText = state.jikaText;
         }
 
-        if(state.duration === 0) { els('timer-ui').innerText = "∞"; } 
-        else {
+        if(state.duration === 0) {
+            els('timer-ui').innerText = "∞";
+        } else {
             state.timeLeft = state.duration; els('timer-ui').innerText = state.timeLeft;
             state.timer = setInterval(() => {
-                state.timeLeft--; els('timer-ui').innerText = state.timeLeft; playTick(); 
+                state.timeLeft--; els('timer-ui').innerText = state.timeLeft;
+                playTick(); 
                 if(state.timeLeft <= 0) { clearInterval(state.timer); submitGame(true); }
             }, 1000);
         }
     }
 
+
     // ==========================================
     // 🔵 ONLINE MODE LOGIC (PEER JS)
     // ==========================================
-    async function hostRoom() {
+    function hostRoom() {
         myName = els('in-name').value.trim(); if(!myName) return alert("Isi nama cuy!");
-        
-        // Panggil Mic Akses
-        await initVoice();
-
         const code = Math.random().toString(36).substring(2, 7).toUpperCase();
         peer = new Peer('JIKAMAKA-' + code, config);
         peer.on('open', (id) => {
@@ -476,7 +403,7 @@
         peer.on('connection', (c) => {
             c.on('open', () => { guests.push(c); });
             c.on('data', (d) => {
-                if(d.type === 'JOIN') { players.push({ id: c.peer, name: d.name }); updatePlayers(); sync(); callAllPeers(); }
+                if(d.type === 'JOIN') { players.push({ id: c.peer, name: d.name }); updatePlayers(); sync(); }
                 if(d.type === 'REACT') { spawnReact(d.text); broadcast({ type: 'REACT', text: d.text }, c.peer); }
                 if(d.type === 'JIKA_DONE') { broadcast({ type: 'JIKA_DONE', text: d.text }); handleJika(d.text); }
                 if(d.type === 'MAKA_SUBMIT') { handleMaka({ peerId: c.peer, name: d.name, text: d.text }); }
@@ -486,19 +413,14 @@
             c.on('close', () => {
                 guests = guests.filter(g => g.peer !== c.peer);
                 players = players.filter(p => p.id !== c.peer);
-                removeRemoteStream(c.peer);
                 updatePlayers(); sync();
             });
         });
     }
 
-    async function joinRoom() {
+    function joinRoom() {
         myName = els('in-name').value.trim(); let code = els('in-code').value.trim().toUpperCase();
         if(!myName || !code) return alert("Nama & Kode!");
-        
-        // Panggil Mic Akses
-        await initVoice();
-
         peer = new Peer(config);
         peer.on('open', (id) => {
             myId = id; conn = peer.connect('JIKAMAKA-' + code);
@@ -509,7 +431,7 @@
             });
             conn.on('data', (d) => {
                 if(d.type === 'SYNC') {
-                    players = d.players; updatePlayers(); callAllPeers();
+                    players = d.players; updatePlayers();
                     els('set-time').value = d.tOpt; els('set-round').value = d.rOpt;
                 }
                 if(d.type === 'REACT') spawnReact(d.text);
@@ -549,7 +471,8 @@
         if(state.duration === 0) return els('timer-ui').innerText = "∞";
         state.timeLeft = state.duration; els('timer-ui').innerText = state.timeLeft;
         state.timer = setInterval(() => {
-            state.timeLeft--; els('timer-ui').innerText = state.timeLeft; playTick(); 
+            state.timeLeft--; els('timer-ui').innerText = state.timeLeft;
+            playTick(); 
             if(state.timeLeft <= 0) { clearInterval(state.timer); submitGame(true); }
         }, 1000);
     }
@@ -563,9 +486,13 @@
 
         if(mode === 'offline') {
             if(offPhase === 1) {
-                state.jikaText = txt; offPhase = 2; offCurrentP = (offCurrentP === 1) ? 2 : 1; 
+                // Selesai ngetik JIKA, pindah HP ke lawan buat ngetik MAKA
+                state.jikaText = txt;
+                offPhase = 2;
+                offCurrentP = (offCurrentP === 1) ? 2 : 1; // Tuker giliran (P1 <-> P2)
                 showPassPhoneScreen();
             } else {
+                // Selesai ngetik MAKA, langsung tampilin hasil
                 let winnerName = (offCurrentP === 1) ? offP1 : offP2;
                 let d = { jika: state.jikaText, maka: txt, winnerName: winnerName, roundOver: (state.currentRound >= state.maxRounds) };
                 showRes(d);
@@ -573,6 +500,7 @@
             return;
         }
 
+        // Kalo mode ONLINE
         els('in-game').style.display = els('btn-submit').style.display = els('btn-surrender').style.display = 'none';
         els('wait-msg').style.display = 'block';
         if(myId === state.currentJudgeId) {
@@ -632,13 +560,18 @@
         if(mode === 'judge') els('res-winner').innerText = "Pemenang: " + d.winnerName;
         
         if(mode === 'offline') {
-            els('btn-next').style.display = 'flex'; els('btn-next').innerText = d.roundOver ? "GAME SELESAI (KE MENU)" : "LANJUT BABAK";
-            els('res-wait').style.display = 'none'; els('btn-guest-back').style.display = 'none';
+            els('btn-next').style.display = 'flex';
+            els('btn-next').innerText = d.roundOver ? "GAME SELESAI (KE MENU)" : "LANJUT BABAK";
+            els('res-wait').style.display = 'none'; 
+            els('btn-guest-back').style.display = 'none';
         } else if(isHost) { 
-            els('btn-next').style.display = 'flex'; els('btn-next').innerText = d.roundOver ? "GAME SELESAI (KE LOBBY)" : "LANJUT BABAK";
-            els('res-wait').style.display = 'none'; els('btn-guest-back').style.display = 'none';
+            els('btn-next').style.display = 'flex'; 
+            els('btn-next').innerText = d.roundOver ? "GAME SELESAI (KE LOBBY)" : "LANJUT BABAK";
+            els('res-wait').style.display = 'none'; 
+            els('btn-guest-back').style.display = 'none';
         } else { 
-            els('btn-next').style.display = 'none'; els('btn-guest-back').style.display = 'flex';
+            els('btn-next').style.display = 'none'; 
+            els('btn-guest-back').style.display = 'flex';
             els('btn-guest-back').innerText = d.roundOver ? "KEMBALI KE LOBBY" : "NUNGGU DI LOBBY";
             els('res-wait').style.display = d.roundOver ? 'none' : 'block';
         }
@@ -647,10 +580,17 @@
     function nextRound() { 
         if(state.currentRound >= state.maxRounds) { 
             if(mode === 'offline') nav('home'); else nav('lobby'); 
-        } else { 
+        } 
+        else { 
             state.currentRound++; 
-            if(mode === 'offline') { offPhase = 1; offCurrentP = (state.currentRound % 2 !== 0) ? 1 : 2; showPassPhoneScreen(); } 
-            else { state.judgeIdx++; startGame(); }
+            if(mode === 'offline') {
+                offPhase = 1; // Balik fase JIKA
+                // Tuker yang ngetik JIKA duluan di ronde berikutnya (biar adil)
+                offCurrentP = (state.currentRound % 2 !== 0) ? 1 : 2; 
+                showPassPhoneScreen();
+            } else {
+                state.judgeIdx++; startGame(); 
+            }
         }
     }
 
@@ -667,10 +607,7 @@
             else conn.send({type:'SURRENDER', name:myName}); 
         } 
     }
-    function quitGame() { 
-        if(localStream) { localStream.getTracks().forEach(track => track.stop()); }
-        if(confirm("Keluar?")) location.reload(); 
-    }
+    function quitGame() { if(confirm("Keluar?")) location.reload(); }
 </script>
 </body>
 </html>
